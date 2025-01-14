@@ -7,15 +7,16 @@
 //
 
 import Foundation
+//import ChameleonFramework
 
-@IBDesignable open class CircleAnimatedMenu: UIControl {
+@IBDesignable open class CircleAnimatedMenu: UIControl ,UIGestureRecognizerDelegate {
     
     // MARK: - Public properties
     
     // Inner radius of menu
     @IBInspectable public var innerRadius: CGFloat = 30 {
         didSet {
-            let maxInnerRadius = self.frame.size.height > self.frame.size.width - imageSize ?
+            let maxInnerRadius = self.frame.size.height > self.frame.size.width - secLabelSize ?
             self.frame.size.width / 2  - 20 : self.frame.size.height / 2 - 20
             innerRadius = innerRadius > maxInnerRadius ? maxInnerRadius : innerRadius
             update()
@@ -137,7 +138,7 @@ import Foundation
     }
     
     // Image size value
-    public var imageSize: CGFloat = 30 {
+    public var secLabelSize: CGFloat = 30 {
         didSet {
             update()
         }
@@ -161,7 +162,7 @@ import Foundation
     }
     
     // Data
-    public var tuplesArray: [(String, String)] = [] {
+    public var tuplesArray: [(String, String, String)] = [] {
         didSet {
             update()
         }
@@ -177,16 +178,17 @@ import Foundation
     // MARK: - Privete properties
     
     var sectionLayers: [CAShapeLayer] = []
-    var imageLayers: [CALayer] = []
+    var secLabelLayers: [CALayer] = []
     var mainCircleLayer = CAShapeLayer()
     var borderCircleLayer = CAShapeLayer()
-    var textCircleLayer = CAShapeLayer()
-    var textLayer = CATextLayer()
+    var imageCircleLayer = CAShapeLayer()
+    var imageLayer = CALayer()
     var selectedSectionIndex: Int = 0
     var previousIndexes: [Int] = []
-    
+    var previousIndex: Int = -1
     var startAngle:CGFloat = 0.0
     var endAngle:CGFloat = 0.0
+    var isInCircle = 0
     
     // MARK: - Init
     
@@ -198,21 +200,28 @@ import Foundation
         super.init(coder: aDecoder)
     }
     
-    public init(menuFrame: CGRect, dataArray: [(String, String)]) {
+    public init(menuFrame: CGRect, dataArray: [(String, String , String)]) {
         
         tuplesArray = dataArray
         super.init(frame: menuFrame)
-        let gestureRecognizer = UIPanGestureRecognizer(target: self, action: #selector(gestureRecognized(gesture:)))
-        self.addGestureRecognizer(gestureRecognizer)
+        let longPressedRecognizer = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPressGesture))
+        self.addGestureRecognizer(longPressedRecognizer)
+        let panGestureRecognizer = UIPanGestureRecognizer(target: self, action: #selector(gestureRecognized(gesture:)))
+        self.addGestureRecognizer(panGestureRecognizer)
+        let tapGestureReconizer = UITapGestureRecognizer(target: self, action: #selector(handleTap))
+        self.addGestureRecognizer(tapGestureReconizer)
+        // 设置手势的代理
+        longPressedRecognizer.delegate = self
+        panGestureRecognizer.delegate = self
         update()
     }
     
     open override func awakeFromNib() {
         super.awakeFromNib()
-        
-        update()
         let gestureRecognizer = UIPanGestureRecognizer(target: self, action: #selector(gestureRecognized(gesture:)))
         self.addGestureRecognizer(gestureRecognizer)
+        update()
+        
     }
     
     // MARK: - UpdatingUI
@@ -246,31 +255,58 @@ import Foundation
         let width : CGFloat =  1 / CGFloat(tuplesArray.count)
         let imageRadius = ((outerRadius - innerRadius) / 2) + innerRadius
         for (index, value) in tuplesArray.enumerated() {
-            
+
             // init sectionLayer
             let sectionLayer = CAShapeLayer()
-            sectionLayer.fillColor = menuFillColor.cgColor
+            sectionLayer.fillColor = CGColor.fromHex(value.2)//menuFillColor.cgColor
             sectionLayer.strokeColor = sectionsStrokeColor.cgColor
             sectionLayer.lineWidth = menuWidthLine
             let path = UIBezierPath()
             path.move(to: center)
-            endAngle = startAngle + width * CGFloat(M_PI) * 2.0
+            endAngle = startAngle + width * CGFloat.pi * 2.0
             path.addArc(withCenter: center, radius: outerRadius, startAngle: startAngle, endAngle: endAngle, clockwise: true)
             path.addLine(to: center)
             path.close()
             sectionLayer.path = path.cgPath
             
             // init imageLayer - layer inside sectionLayer which contains image
-            let middleEndAngle:CGFloat = startAngle + width / 2 * CGFloat(M_PI) * 2.0
-            let imageLayer = CALayer()
-            let image = UIImage(named: value.0)
-            imageLayer.contents = image?.cgImage
-            let imageX = (imageRadius * cos(middleEndAngle)) + center.x - imageSize / 2
-            let imageY = (imageRadius * sin(middleEndAngle)) + center.y - imageSize / 2
-            imageLayer.frame = CGRect(x: imageX, y: imageY, width: imageSize, height: imageSize)
-            sectionLayer.contentsGravity = kCAGravityResizeAspect
-            imageLayer.mask = sectionLayer
-            imageLayers.append(imageLayer)
+            let middleEndAngle:CGFloat = startAngle + width / 2 * CGFloat.pi * 2.0
+            let secLabelLayer = CATextLayer()
+//            let secLabel = UILabel()//UIImage(named: value.0)
+            secLabelLayer.string = value.1
+//            imageLayer.frame = CGRect(x: center.x - innerRadius + 4, y: center.y - titleFont.pointSize /
+//                                  2, width: 2 * innerRadius - 8, height: titleFont.pointSize + 4)
+//            imageLayer.contents = secLabel
+
+            secLabelLayer.fontSize = fontSize(forLineHeight: secLabelSize, font: UIFont.systemFont(ofSize: 16)) * 0.8
+            var textWidth = calculateTextLayerWidth(for: value.1, font: UIFont.systemFont(ofSize: secLabelLayer.fontSize))
+            var textHeight = secLabelSize
+            
+
+            if textWidth >= imageRadius * 0.9{
+                textWidth = textWidth * 0.7
+                textHeight = secLabelSize * 2
+            }
+            while textWidth >= imageRadius * 0.9{
+                textWidth = textWidth * 0.9
+                secLabelLayer.fontSize = secLabelLayer.fontSize * 0.95
+            }
+            
+            let imageX = (imageRadius * cos(middleEndAngle)) + center.x - textWidth / 2
+            let imageY = (imageRadius * sin(middleEndAngle)) + center.y - textHeight / 2
+            secLabelLayer.frame = CGRect(x: imageX, y: imageY, width: textWidth, height:textHeight)
+            secLabelLayer.contentsScale = UIScreen.main.scale
+            secLabelLayer.foregroundColor = UIColor.black.cgColor//textColor.cgColor
+            secLabelLayer.backgroundColor = UIColor.clear.cgColor
+//            secLabelLayer.position = CGPoint(x: secLabelLayer.position.x, y: secLabelLayer.frame.midY)
+            secLabelLayer.alignmentMode = .center
+            secLabelLayer.isWrapped = true
+            secLabelLayer.truncationMode = .end
+            secLabelLayer.font = UIFont.systemFont(ofSize: 16)//CTFontCreateWithName((titleFont.fontName as CFString?)!, titleFont.pointSize,  nil)
+//            secLabelLayer.fontSize = titleFont.pointSize
+            sectionLayer.contentsGravity = .resizeAspect
+            secLabelLayer.mask = sectionLayer
+            secLabelLayers.append(secLabelLayer)
             
             // add sectionLayer to array
             sectionLayers.append(sectionLayer)
@@ -285,9 +321,9 @@ import Foundation
             initialPath.close()
             animation.fromValue = initialPath.cgPath
             animation.toValue = sectionLayer.path
-            animation.timingFunction = CAMediaTimingFunction(name: kCAMediaTimingFunctionEaseOut)
+            animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
             animation.setValue(index, forKey: "id")
-            animation.fillMode = kCAFillModeForwards
+            animation.fillMode = .forwards
             animation.isRemovedOnCompletion = false
             if animated {
                 animation.delegate = self
@@ -299,27 +335,24 @@ import Foundation
         }
         
         // init textCircleLayer - circle layer which shows title of each section
-        textCircleLayer = CAShapeLayer()
+        imageCircleLayer = CAShapeLayer()
         let circlePath = UIBezierPath(ovalIn: CGRect(x: center.x - innerRadius, y: center.y - innerRadius,
                                                              width: 2 * innerRadius, height: 2 * innerRadius))
-        textCircleLayer.fillColor = innerCircleColor.cgColor
-        textCircleLayer.strokeColor = closerBorderColor.cgColor
-        textCircleLayer.lineWidth = closerBorderWidth
-        textCircleLayer.path = circlePath.cgPath
+        imageCircleLayer.fillColor = innerCircleColor.cgColor
+        imageCircleLayer.strokeColor = closerBorderColor.cgColor
+        imageCircleLayer.lineWidth = closerBorderWidth
+        imageCircleLayer.path = circlePath.cgPath
         
         // init textLayer - special layer to show text
-        textLayer = CATextLayer()
-        textLayer.frame = CGRect(x: center.x - innerRadius + 4, y: center.y - titleFont.pointSize /
-                          2, width: 2 * innerRadius - 8, height: titleFont.pointSize + 4)
-        textLayer.contentsScale = UIScreen.main.scale
-        textLayer.foregroundColor = textColor.cgColor
-        textLayer.backgroundColor = innerCircleColor.cgColor
-        textLayer.alignmentMode = kCAAlignmentCenter
-        textLayer.isWrapped = true
-        textLayer.truncationMode = kCATruncationEnd
-        textLayer.font = CTFontCreateWithName(titleFont.fontName as CFString?, titleFont.pointSize,  nil)
-        textLayer.fontSize = titleFont.pointSize
-        textLayer.string = ""
+        imageLayer = CALayer()
+        imageLayer.frame = CGRect(x: center.x - innerRadius * 0.7, y: center.y - innerRadius * 0.7,
+                                  width: 2 * innerRadius * 0.7, height: 2 * innerRadius * 0.7)
+        //CGRect(x: center.x - innerRadius + 4, y: center.y - titleFont.pointSize /
+          //                2, width: 2 * innerRadius - 8, height: titleFont.pointSize + 4)
+        imageLayer.contentsScale = UIScreen.main.scale
+        imageLayer.backgroundColor = UIColor.clear.cgColor
+        let image = UIImage()
+        imageLayer.contents = image.cgImage
         
         
         self.setNeedsLayout()
@@ -328,15 +361,15 @@ import Foundation
     fileprivate func highlightDefaultSection() {
         let highlightedSecttion = sectionLayers[defaulHighlightedtSectionIndex]
         highlightedSecttion.fillColor = highlightedColor.cgColor
-        textLayer.string = tuplesArray[defaulHighlightedtSectionIndex].1
+        imageLayer.contents = UIImage(named: tuplesArray[defaulHighlightedtSectionIndex].0)?.cgImage
     }
     
     fileprivate func showSlices() {
         for sectionLayer in sectionLayers {
             self.layer.addSublayer(sectionLayer)
             if !animated {
-                let imageLayerIndex = sectionLayers.index(of: sectionLayer)
-                sectionLayer.addSublayer(imageLayers[imageLayerIndex!])
+                let secLabelLayerIndex = sectionLayers.firstIndex(of: sectionLayer)
+                sectionLayer.addSublayer(secLabelLayers[secLabelLayerIndex!])
             }
         }
         if (!animated) {
@@ -352,15 +385,15 @@ import Foundation
         let touchPoint = touch.location(in: self)
         for shapeLayer in sectionLayers {
             let currentIndex = sectionLayers.index(of: shapeLayer)!
-            if ((shapeLayer.path?.contains(touchPoint))! && !(textCircleLayer.path?.contains(touchPoint))!) {
+            if ((shapeLayer.path?.contains(touchPoint))! && !(imageCircleLayer.path?.contains(touchPoint))!) {
                 if highlightedColors.isEmpty {
-                    shapeLayer.fillColor = highlightedColor.cgColor
+                    shapeLayer.fillColor = CGColor.fromHex(darkenHexColor(tuplesArray[currentIndex].2)!)//highlightedColor.cgColor
                 } else {
-                    shapeLayer.fillColor = highlightedColors[0].cgColor
+                    shapeLayer.fillColor = CGColor.fromHex(darkenHexColor(tuplesArray[currentIndex].2)!)//highlightedColors[0].cgColor
                 }
                 selectedSectionIndex = currentIndex
-                let currentText = tuplesArray[selectedSectionIndex].1
-                textLayer.string = currentText
+                let currentImage = UIImage(named: tuplesArray[selectedSectionIndex].0)?.cgImage
+                imageLayer.contents = currentImage
             }
         }
         
@@ -376,7 +409,7 @@ import Foundation
     
     // MARK: - UIPanGestureRecognizer methods
     
-    func gestureRecognized(gesture: UIPanGestureRecognizer) {
+    @objc func gestureRecognized(gesture: UIPanGestureRecognizer) {
         switch gesture.state {
         case .began:
             let location = gesture.location(in: self)
@@ -387,76 +420,117 @@ import Foundation
             fillSectionIn(location: location)
             
         case .ended:
-            clearData()
+//            clearData()
             delegate?.sectionSelected(text: tuplesArray[selectedSectionIndex].1, index: selectedSectionIndex)
+            // 模拟延迟触发动画移除
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        self.removeViewWithAnimation(self)
+                    }
         default:
-            print("default")
+            break
         }
         
     }
+    @objc func handleLongPressGesture(_ gesture: UILongPressGestureRecognizer) {
+        guard let longPressedView = gesture.view?.superview else { return }
+            switch gesture.state {
+            case .began:
+                let location = gesture.location(in: self)
+                fillSectionIn(location: location)
+            case .ended, .cancelled:
+//                clearData()
+                delegate?.sectionSelected(text: tuplesArray[selectedSectionIndex].1, index: selectedSectionIndex)
+                // 模拟延迟触发动画移除
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            self.removeViewWithAnimation(self)
+                        }
+            default:
+                break
+            }
+        }
+    
+    // MARK: - UIPanGestureRecognizer methods
+    
+    @objc func handleTap(gesture: UITapGestureRecognizer) {
+        
+        let location = gesture.location(in: self)
+        fillSectionIn(location: location)
+//        clearData()
+        delegate?.sectionSelected(text: tuplesArray[selectedSectionIndex].1, index: selectedSectionIndex)
+    // 模拟延迟触发动画移除
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.removeViewWithAnimation(self)
+            }
+        
+    }
+    // 允许多个手势同时工作
+    public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            return true
+        }
+    
+    func removeViewWithAnimation(_ view: UIView) {
+            UIView.animate(withDuration: 0.2, // 动画持续时间
+                           delay: 0, // 无延迟
+                           options: [.curveEaseInOut], // 动画选项
+                           animations: {
+                view.alpha = 0 // 渐隐动画
+                view.transform = CGAffineTransform(scaleX: 0.1, y: 0.1) // 缩小动画
+            }, completion: { _ in
+                view.removeFromSuperview() // 动画结束后移除视图
+            })
+        }
     
     // MARK: - Helpers
     
     func fillSectionIn(location: CGPoint) {
+        
         for shapeLayer in sectionLayers {
-            shapeLayer.fillColor = menuFillColor.cgColor
             let currentIndex = sectionLayers.index(of: shapeLayer)!
-            if ((shapeLayer.path?.contains(location))! && !(textCircleLayer.path?.contains(location))!) {
-                if !previousIndexes.contains(currentIndex) {
-                    selectedSectionIndex = currentIndex
-                    previousIndexes.insert(selectedSectionIndex, at: 0)
-                    let currentText = tuplesArray[selectedSectionIndex].1
-                    textLayer.string = currentText
-                } else {
-                    let previousIndex = previousIndexes.index(of: currentIndex)
-                    if previousIndex == 1 {
-                        selectedSectionIndex = currentIndex
-                        let currentText = tuplesArray[selectedSectionIndex].1
-                        textLayer.string = currentText
-                        let firstElement = previousIndexes.first
-                        previousIndexes.removeAll()
-                        previousIndexes.append(currentIndex)
-                        previousIndexes.append(firstElement!)
-                    }
+            if ((shapeLayer.path?.contains(location))! && !(imageCircleLayer.path?.contains(location))!) {
+                let inCircle = 1
+                isInCircle = isInCircle + inCircle
+                if previousIndex != currentIndex{
+                    // 创建震动反馈生成器（点击时通常使用 .medium 或 .light）
+                        let feedbackGenerator = UIImpactFeedbackGenerator(style: .medium)
+                        
+                        // 准备震动反馈
+                        feedbackGenerator.prepare()
+                        
+                        // 触发震动反馈
+                        feedbackGenerator.impactOccurred()
+                    previousIndex = currentIndex
                 }
-                if previousIndexes.count == 1 {
-                    if highlightedColors.isEmpty {
-                        shapeLayer.fillColor = highlightedColor.cgColor
-                    } else {
-                        shapeLayer.fillColor = highlightedColors[0].cgColor
-                    }
-                } else if previousIndexes.count == 7 || previousIndexes.count == sectionLayers.count {
-                    previousIndexes.removeLast()
+                selectedSectionIndex = currentIndex
+                let currentImage = UIImage(named: tuplesArray[selectedSectionIndex].0)?.cgImage
+                imageLayer.contents = currentImage
+                if highlightedColors.isEmpty {
+                    shapeLayer.fillColor = CGColor.fromHex(darkenHexColor(tuplesArray[selectedSectionIndex].2)!)
+                } else {
+                    shapeLayer.fillColor = CGColor.fromHex(darkenHexColor(tuplesArray[selectedSectionIndex].2)!)
                 }
                 
+            } else {
+                shapeLayer.fillColor = CGColor.fromHex(tuplesArray[currentIndex].2)
+                
             }
-            if previousIndexes.count > 1 {
-                if previousIndexes.contains(currentIndex) {
-                    if highlightedColors.isEmpty {
-                        let previousIndex = previousIndexes.index(of: currentIndex)
-                        let currentAlpha = 1 - (Double(previousIndex!) * 0.15)
-                        let newHighlightedColor: UIColor = highlightedColor.withAlphaComponent(CGFloat(currentAlpha))
-                        shapeLayer.fillColor = newHighlightedColor.cgColor
-                    } else {
-                        let previousIndex = previousIndexes.index(of: currentIndex)
-                        if previousIndex! < highlightedColors.count {
-                            shapeLayer.fillColor = highlightedColors[previousIndex!].cgColor
-                        }
-                    }
-                }
-            }
+            
+        }
+        if isInCircle != 0 {
+            isInCircle = 0
+        } else {
+            previousIndex = -1
         }
     }
     
     func clearData() {
-        for shapeLayer in sectionLayers {
-            shapeLayer.fillColor = menuFillColor.cgColor
-        }
-        if highlightedColors.isEmpty {
-            sectionLayers[selectedSectionIndex].fillColor = highlightedColor.cgColor
-        } else {
-            sectionLayers[selectedSectionIndex].fillColor = highlightedColors[0].cgColor
-        }
+//        for shapeLayer in sectionLayers {
+//            shapeLayer.fillColor = menuFillColor.cgColor
+//        }
+//        if highlightedColors.isEmpty {
+//            sectionLayers[selectedSectionIndex].fillColor = CGColor.fromHex(darkenHexColor(tuplesArray[selectedSectionIndex].2)!)//highlightedColor.cgColor
+//        } else {
+//            sectionLayers[selectedSectionIndex].fillColor = CGColor.fromHex(darkenHexColor(tuplesArray[selectedSectionIndex].2)!)//highlightedColors[0].cgColor
+//        }
         previousIndexes.removeAll()
     }
     
@@ -468,12 +542,12 @@ import Foundation
     func setInitialValues() {
         
         sectionLayers = [CAShapeLayer]()
-        imageLayers = [CALayer]()
+        secLabelLayers = [CALayer]()
         mainCircleLayer.fillColor = UIColor.clear.cgColor
         borderCircleLayer.fillColor = UIColor.clear.cgColor
         borderCircleLayer.strokeColor = UIColor.clear.cgColor
-        textCircleLayer.fillColor = UIColor.clear.cgColor
-        textLayer.foregroundColor = UIColor.clear.cgColor
+        imageCircleLayer.fillColor = UIColor.clear.cgColor
+//        imageLayer.foregroundColor = UIColor.clear.cgColor
         previousIndexes = []
         startAngle = 0.0
         endAngle = 0.0
@@ -483,9 +557,9 @@ import Foundation
         mainCircleLayer.strokeColor = farBorderColor.cgColor
         mainCircleLayer.fillColor = menuBackgroundColor.cgColor
         borderCircleLayer.strokeColor = farBorderColor.cgColor
-        self.layer.addSublayer(textCircleLayer)
-        textCircleLayer.addSublayer(borderCircleLayer)
-        textCircleLayer.addSublayer(textLayer)
+        self.layer.addSublayer(imageCircleLayer)
+        imageCircleLayer.addSublayer(borderCircleLayer)
+        imageCircleLayer.addSublayer(imageLayer)
         mainCircleLayer.shadowRadius = menuShadowRadius
         mainCircleLayer.shadowOffset = CGSize(width: 0, height: 0)
         mainCircleLayer.shadowColor = shadowColor.cgColor
@@ -493,6 +567,52 @@ import Foundation
         if defaulHighlightedtSectionIndex > 0 {
             highlightDefaultSection()
         }
+    }
+    // 函数：调整颜色亮度
+    func darkenHexColor(_ hex: String) -> String? {
+        // 确保百分比在 [0, 1] 范围内
+        let percentage = 0.3//max(min(percentage, 1), 0)
+        
+        // 检查合法性
+        guard hex.count == 6 || hex.count == 8 else { return nil }
+        
+        // 提取 RGB 分量
+        var rgbValue: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&rgbValue)
+        
+        let hasAlpha = hex.count == 8
+        let red = CGFloat((rgbValue & 0xFF0000) >> 16) / 255.0
+        let green = CGFloat((rgbValue & 0x00FF00) >> 8) / 255.0
+        let blue = CGFloat(rgbValue & 0x0000FF) / 255.0
+        let alpha = hasAlpha ? CGFloat((rgbValue & 0xFF000000) >> 24) / 255.0 : 1.0
+        
+        // 调整亮度
+        let darkenedRed = max(red * (1 - percentage), 0)
+        let darkenedGreen = max(green * (1 - percentage), 0)
+        let darkenedBlue = max(blue * (1 - percentage), 0)
+        
+        // 将调整后的颜色重新编码为 Hex
+        let darkenedRGB = (hasAlpha ? Int(alpha * 255) << 24 : 0) |
+                          (Int(darkenedRed * 255) << 16) |
+                          (Int(darkenedGreen * 255) << 8) |
+                          Int(darkenedBlue * 255)
+
+        let format = hasAlpha ? "%08X" : "%06X"
+        return String(format: format, darkenedRGB)
+    }
+    
+    
+    func fontSize(forLineHeight targetLineHeight: CGFloat, font: UIFont) -> CGFloat {
+        let currentLineHeight = font.lineHeight
+        let fontSize = font.pointSize
+        return targetLineHeight / (currentLineHeight / fontSize)
+    }
+    func calculateTextLayerWidth(for text: String, font: UIFont) -> CGFloat {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font
+        ]
+        let size = (text as NSString).size(withAttributes: attributes)
+        return size.width
     }
     
 }
@@ -503,12 +623,53 @@ extension CircleAnimatedMenu: CAAnimationDelegate {
         
         if anim.value(forKey: "id") as! Int == sectionLayers.count - 1 {
             for sectionLayer in sectionLayers {
-                let imageLayerIndex = sectionLayers.index(of: sectionLayer)
-                imageLayers[imageLayerIndex!].removeFromSuperlayer()
-                sectionLayer.addSublayer(imageLayers[imageLayerIndex!])
+                let secLabelLayerIndex = sectionLayers.firstIndex(of: sectionLayer)
+                secLabelLayers[secLabelLayerIndex!].removeFromSuperlayer()
+                sectionLayer.addSublayer(secLabelLayers[secLabelLayerIndex!])
             }
             setStateAfterAnimation()
         }
     }
     
+}
+extension CGColor {
+    /// 通过16进制字符串生成CGColor
+    /// - Parameters:
+    ///   - hex: 16进制颜色字符串（支持格式：#RRGGBB 或 #RRGGBBAA）
+    ///   - alpha: 透明度（当字符串中不包含透明度时使用）
+    /// - Returns: 可选CGColor对象
+    static func fromHex(_ hex: String, alpha: CGFloat = 1.0) -> CGColor? {
+        var hexString = hex.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        
+        // 检查是否有前缀#
+        if hexString.hasPrefix("#") {
+            hexString.removeFirst()
+        }
+        
+        // 检查字符串长度是否有效
+        guard hexString.count == 6 || hexString.count == 8 else {
+            return nil
+        }
+        
+        // 转换16进制字符串为RGB(A)值
+        var rgbValue: UInt64 = 0
+        Scanner(string: hexString).scanHexInt64(&rgbValue)
+        
+        let red, green, blue, alphaValue: CGFloat
+        if hexString.count == 6 {
+            // RRGGBB
+            red = CGFloat((rgbValue & 0xFF0000) >> 16) / 255.0
+            green = CGFloat((rgbValue & 0x00FF00) >> 8) / 255.0
+            blue = CGFloat(rgbValue & 0x0000FF) / 255.0
+            alphaValue = alpha
+        } else {
+            // RRGGBBAA
+            red = CGFloat((rgbValue & 0xFF000000) >> 24) / 255.0
+            green = CGFloat((rgbValue & 0x00FF0000) >> 16) / 255.0
+            blue = CGFloat((rgbValue & 0x0000FF00) >> 8) / 255.0
+            alphaValue = CGFloat(rgbValue & 0x000000FF) / 255.0
+        }
+        
+        return CGColor(red: red, green: green, blue: blue, alpha: alphaValue)
+    }
 }
