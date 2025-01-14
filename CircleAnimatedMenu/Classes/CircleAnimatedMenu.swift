@@ -296,7 +296,7 @@ import ChameleonFramework
             let imageY = (imageRadius * sin(middleEndAngle)) + center.y - textHeight / 2
             secLabelLayer.frame = CGRect(x: imageX, y: imageY, width: textWidth, height:textHeight)
             secLabelLayer.contentsScale = UIScreen.main.scale
-            secLabelLayer.foregroundColor = UIColor.black.cgColor//textColor.cgColor
+            secLabelLayer.foregroundColor = ContrastColorOf(UIColor(hexString: value.2)! , returnFlat: true).cgColor
             secLabelLayer.backgroundColor = UIColor.clear.cgColor
 //            secLabelLayer.position = CGPoint(x: secLabelLayer.position.x, y: secLabelLayer.frame.midY)
             secLabelLayer.alignmentMode = .center
