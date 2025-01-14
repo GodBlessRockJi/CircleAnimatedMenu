@@ -15,4 +15,6 @@ Pod::Spec.new do |s|
   s.ios.deployment_target = '15.0'
   s.source_files = 'CircleAnimatedMenu/Classes/**/*.swift'
 
+s.swift_version  = '5.0' # 在这里指定 Swift 版本
+
 end
