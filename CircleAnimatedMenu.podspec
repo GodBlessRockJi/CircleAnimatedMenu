@@ -17,6 +17,6 @@ Pod::Spec.new do |s|
 
 s.swift_version  = '5.0' # 在这里指定 Swift 版本
 
- s.dependency 'ChameleonFramework/Swift', :git => 'https://github.com/wowansm/Chameleon.git', :branch => 'swift5'
+ s.dependency 'ChameleonFramework/Swift'
 
 end
