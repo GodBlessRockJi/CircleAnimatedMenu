@@ -7,7 +7,7 @@
 //
 
 import Foundation
-//import ChameleonFramework
+import ChameleonFramework
 
 @IBDesignable open class CircleAnimatedMenu: UIControl ,UIGestureRecognizerDelegate {
     
